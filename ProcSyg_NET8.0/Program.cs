@@ -20,10 +20,13 @@ namespace ProcSyg
     {
         static void Main(string[] args) {
 
-            WaveFile waveFile;
-            // used for varius plots - not used yet
             var pltBefore = new ScottPlot.Plot();
             var pltAfter = new ScottPlot.Plot();
+
+            
+            WaveFile waveFile;
+            // used for varius plots - not used yet
+            
 
             // Load .wav file
             using (var stream = new FileStream("test3s.wav", FileMode.Open)) {
@@ -39,8 +42,8 @@ namespace ProcSyg
             double[] samplesLeft = chLeft.Samples.Select(s => (double)s).ToArray();
 
             // Change dB level of audio
-            int dB = 10;
-            samplesLeft = ChangeDBLevel(samplesLeft, dB);
+            int dB = -20;
+            ChangeDBLevelChunks(samplesLeft, dB);
             // cast to float for DiscreteSignal class
             float[] fSamplesLeft = samplesLeft.Select(s => (float)s).ToArray();
             
@@ -53,52 +56,145 @@ namespace ProcSyg
                 output.SaveTo(stream);
             }
             
+            
+            
+
 
             // end of program
             Console.WriteLine("Koniec.");
 
         }
-
-
-
         /*
-         * Ideas: move fft to main, normalize/denormalize signal
-         * To do: do fft in block of e.g. 1024 and ZeroPad only the last block -> should be omega faster
-         *        check the difference of ForwardReal and Forward (ForwardReal still gives imag values ???)
-         *        find a way to truncate signal from zero-padding
+         * IN: samples of signal, value of decibels
          * 
+         * Method to change the level of signal power
+         * 
+         * OUT: array with modified samples of signal
          */
         private static double[] ChangeDBLevel(double[] samples, int dB) {
 
-            // zero-pad samples to fit power of 2
-            samples = FftSharp.Pad.ZeroPad(samples);
+            // zero-pad samples to fit power of 2, at least 2 samples
+            double[] samplesNew = FftSharp.Pad.ZeroPad(samples);
+            if (samplesNew.Length == 1) samplesNew = samplesNew.Append(0.0).ToArray();
+
             // get fft output
-            System.Numerics.Complex[] spectrum = FftSharp.FFT.ForwardReal(samples);
+            System.Numerics.Complex[] spectrum = FftSharp.FFT.ForwardReal(samplesNew);
             int fftSize = spectrum.Length;
+
             // prepare array for spectrum changes
             System.Numerics.Complex[] newSpectrum = Array.Empty<System.Numerics.Complex>();
-
-            // test purposes
-            Console.WriteLine(spectrum[10]);
 
             // dB -> linear scale
             double scale = Math.Sqrt(Math.Pow(10, dB / 10.0));
             // applay changes
             for (int i = 0; i < fftSize; ++i) {
                 newSpectrum = newSpectrum.Append(spectrum[i] * scale).ToArray();
-                //Console.WriteLine($"{newSpectrum[i]} {spectrum[i]}");
             }
-            //Console.WriteLine($"{fftSize}, {newSpectrum.Length}");
 
             // iverse fft
-            return FftSharp.FFT.InverseReal(newSpectrum);
+            samplesNew = FftSharp.FFT.InverseReal(newSpectrum);
+            // get rid of additional zeros from padding (if any)
+            TruncateZeros(samples, ref samplesNew);
+
+            return samplesNew;
+
         }
 
+        /*
+         * IN: samples of signal, value of decibels
+         * 
+         * Method to change the level of signal power. It computes values in place
+         * using chunks of data for much faster results (e.g. for audio processing)
+         * 
+         * OUT: -
+         */
+        private static void ChangeDBLevelChunks(double[] samples, int dB) {
 
+            int fftSize = 2058; // has to be power of 2
+            int index = 0;
 
+            // if data is smaller or equal than fft sample number
+            if (samples.Length <= fftSize) {
+                
+                double[] changedSamples = ChangeDBLevel(samples, dB);
+                Array.Copy(changedSamples, samples, changedSamples.Length);
 
+            } else {
 
+                double[] dataChunk = new double[fftSize];
+                double[] changedChunk = new double[fftSize];
 
+                // if data is bigger than fft sample number
+                for (index = 0; index < samples.Length; index += fftSize) {
+
+                    // if not multiple of fft sample number
+                    if (index + fftSize > samples.Length) break;
+
+                    // change the block of data and applay to samples
+                    Array.Copy(samples, index, dataChunk, 0, fftSize);
+                    changedChunk = ChangeDBLevel(dataChunk, dB);
+                    Array.Copy(changedChunk, 0, samples, index, fftSize);
+
+                }
+                // how many samples left in input
+                int numberLeft = samples.Length - index;
+
+                // if any left
+                if (numberLeft > 0) {
+
+                    // get rest of the samples
+                    dataChunk = new double[numberLeft];
+                    Array.Copy(samples, index, dataChunk, 0, numberLeft);
+
+                    // applay changes
+                    changedChunk = ChangeDBLevel(dataChunk, dB);
+                    Array.Copy(changedChunk, 0, samples, index, numberLeft);
+                }
+
+            }
+
+            
+        }
+
+        /*
+         * IN: array of samples before padding, array of samples after padding
+         * 
+         * Method for cutting samples added from zero-padding (front and back). It works on array of samples
+         * aftef IFFT. Original array of samples needed for its length (change to get arg only samples.Length?).
+         * 
+         * OUT: -
+         */
+        private static void TruncateZeros(double[] oldS, ref double[] paddedS) {
+
+            // difference in length
+            int diff = paddedS.Length - oldS.Length;
+            // do nothing if the same length
+            if (diff == 0) return;
+
+            // if difference is even -> same amount of zeros in front and back
+            if (diff % 2 == 0) { 
+                paddedS = paddedS.Skip(diff / 2).Take(paddedS.Length - diff).ToArray();
+            } else {
+            // else -> one less in front than in the back
+                int tmp = diff / 2;
+                paddedS = paddedS.Skip(tmp).Take(paddedS.Length - tmp - 1).ToArray();
+            }
+
+        }
+
+        /* IN: array of double values
+         * 
+         * For test purposes.
+         * 
+         * OUT: -
+         */
+        private static void ShowArray(double[] arr) {
+            foreach (var i in arr) {
+                Console.WriteLine(i);
+            }
+            Console.WriteLine($"Length: {arr.Length}");
+            Console.WriteLine("--------");
+        }
     }
 
 }
@@ -107,21 +203,29 @@ namespace ProcSyg
 
 
 
-/* SINUS
+/* SINUS FOR TESTS
               
-            var plt = new ScottPlot.Plot();
-            int N = 512;
-            int fp = 200;
+            
+            int N = 216;
+            int fp = 100;
             var pltSin = new ScottPlot.Plot();
-            var sin = new SineBuilder().SetParameter("frequency", 10).OfLength(N).SampledAt(fp).Build();
+            var sin = new SineBuilder().SetParameter("frequency", 1).OfLength(N).SampledAt(fp).Build();
             double[] sinTime = Generate.Consecutive(N, 1.0f / fp, 0);
-            pltSin.Add.Scatter(sinTime, sin.Samples);
+            float[] sinSamples = sin.Samples;
+            for (int i = 0; i < sinSamples.Length; ++i) sinSamples[i] += 0.2f;
+            pltSin.Add.Scatter(sinTime, sinSamples);
             pltSin.SavePng(AppContext.BaseDirectory + "wykresSinus.png", 1500, 1000);
 
-            var sinSamples = sin.Samples;
-            var dSinSamples= sinSamples.Select(s => (double)s).ToArray();
-            double[] changedSin = ChangeMagnitudeLevel(dSinSamples, 2);
-            Console.WriteLine($"Pre: {dSinSamples[5]} Post: {changedSin[5]}");
-            pltAfter.Add.Scatter(sinTime, changedSin);
+
+            var dSinSamples = sinSamples.Select(s => (double)s).ToArray();
+            Console.WriteLine($"sin samples L before: {dSinSamples.Length}");
+            ChangeDBLevelChunks(dSinSamples, 3);
+            Console.WriteLine($"sin samples L after: {dSinSamples.Length}");
+
+            double[] sinTimeAfter = Generate.Consecutive(dSinSamples.Length, 1.0f / fp, 0);
+            Console.WriteLine($"X axis length: {sinTimeAfter.Length}");
+
+            pltAfter.Add.Scatter(sinTimeAfter, dSinSamples);
             pltAfter.SavePng(AppContext.BaseDirectory + "wykresSinusAfter.png", 1500, 1000);
-            */
+            
+*/
