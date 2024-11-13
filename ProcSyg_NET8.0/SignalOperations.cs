@@ -11,6 +11,22 @@ namespace ProcSyg_NET8._0
 {
     internal class SignalOperations
     {
+        public static void AddWhiteNoise(double[] samples, int freq, double noiseLevel = 0.03) {
+
+            // create white noise and get its samples
+            DiscreteSignal noise = new NWaves.Signals.Builders.WhiteNoiseBuilder().SetParameter("min", -noiseLevel)
+                                                                                  .SetParameter("max", noiseLevel)
+                                                                                  .SampledAt(freq)
+                                                                                  .OfLength(samples.Length)
+                                                                                  .Build();
+            double[] noiseSamples = noise.Samples.Select(x => (double)x).ToArray();
+
+            // apply to signal
+            for (int i = 0; i < samples.Length; ++i) {
+                samples[i] += noiseSamples[i];
+            }
+
+        }
 
         public static void Echo(DiscreteSignal signal, ref double[] samples, int ms, float feedback=0.5f) {
 
@@ -22,7 +38,6 @@ namespace ProcSyg_NET8._0
 
             samples = samplesNew;
         }
-
 
         // take ms variable and make it true ms since constructor takes sec, feedback I assume 1 => same power as original
         public static void Delay(DiscreteSignal signal, ref double[] samples, int ms, float feedback=0.5f) {
@@ -47,9 +62,6 @@ namespace ProcSyg_NET8._0
 
             // get new samples of changed signal
             double[] samplesNew = stretchedSingal.Samples.Select(x => (double)x).ToArray();
-
-            //Console.WriteLine($"samples L: {samples.Length} | samplesNew L: {samplesNew.Length}");
-
             samples = samplesNew;
             
         }

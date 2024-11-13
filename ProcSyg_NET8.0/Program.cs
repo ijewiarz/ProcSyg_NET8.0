@@ -43,7 +43,7 @@ namespace ProcSyg
 
             // Change signal
             //int dB = -30;
-            SignalOperations.Delay(chLeft, ref samplesLeft, 100);
+            SignalOperations.AddWhiteNoise(samplesLeft, chLeft.SamplingRate);
             // cast to float for DiscreteSignal class
             float[] fSamplesLeft = samplesLeft.Select(s => (float)s).ToArray();
 
