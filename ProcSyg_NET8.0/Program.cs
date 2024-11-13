@@ -41,9 +41,9 @@ namespace ProcSyg
             DiscreteSignal chLeft = waveFile[Channels.Left];
             double[] samplesLeft = chLeft.Samples.Select(s => (double)s).ToArray();
 
-            // Change dB level of audio
-            int dB = -30;
-            SignalOperations.LowPassFilter(samplesLeft, Header.SamplingRate, 500);
+            // Change signal
+            //int dB = -30;
+            SignalOperations.Delay(chLeft, ref samplesLeft, 100);
             // cast to float for DiscreteSignal class
             float[] fSamplesLeft = samplesLeft.Select(s => (float)s).ToArray();
 
@@ -57,37 +57,7 @@ namespace ProcSyg
             }
             
 
-            /*
-            int N = 512;
-            int fp = 3000;
-            var pltSin = new ScottPlot.Plot();
-            var pltAfter = new ScottPlot.Plot();
-            var pltFourier = new ScottPlot.Plot();
-
-            var sin1 = new SineBuilder().SetParameter("frequency", 500).OfLength(N).SampledAt(fp).Build();
-            var sin2 = new SineBuilder().SetParameter("frequency", 1000).OfLength(N).SampledAt(fp).Build();
-            double[] sinTime = Generate.Consecutive(N, 1.0f / fp, 0);
-            var sin = sin1 + sin2;
-            float[] sinSamples = sin.Samples;
-            //for (int i = 0; i < sinSamples.Length; ++i) sinSamples[i] += 0.2f;
-            pltSin.Add.Scatter(sinTime, sinSamples);
-            pltSin.SavePng(AppContext.BaseDirectory + "wykresSinus.png", 1500, 1000);
-
-            var dSinSamples = sinSamples.Select(s => (double)s).ToArray();
-            System.Numerics.Complex[] spectrum = FftSharp.FFT.Forward(dSinSamples);
-            var magnitudeSpectrum = FftSharp.FFT.Magnitude(spectrum);
-            double[] freqAxis = FftSharp.FFT.FrequencyScale(magnitudeSpectrum.Length, fp);
-            pltFourier.Add.Scatter(freqAxis, magnitudeSpectrum);
-            pltFourier.SavePng(AppContext.BaseDirectory + "wykresMagnitude.png", 1500, 1000);
-
-            SignalOperations.HighPassFilter(dSinSamples, fp, 700);
-
-            spectrum = FftSharp.FFT.Forward(dSinSamples);
-            magnitudeSpectrum = FftSharp.FFT.Magnitude(spectrum);
-            pltAfter.Add.Scatter(freqAxis, magnitudeSpectrum);
-            pltAfter.SavePng(AppContext.BaseDirectory + "wykresMagnitudePoFiltrze.png", 1500, 1000);
-
-            */
+            
 
 
 
@@ -150,3 +120,35 @@ namespace ProcSyg
             pltAfter.SavePng(AppContext.BaseDirectory + "wykresSinusAfter.png", 1500, 1000);
             
 */
+
+/*
+            int N = 512;
+            int fp = 3000;
+            var pltSin = new ScottPlot.Plot();
+            var pltAfter = new ScottPlot.Plot();
+            var pltFourier = new ScottPlot.Plot();
+
+            var sin1 = new SineBuilder().SetParameter("frequency", 500).OfLength(N).SampledAt(fp).Build();
+            var sin2 = new SineBuilder().SetParameter("frequency", 1000).OfLength(N).SampledAt(fp).Build();
+            double[] sinTime = Generate.Consecutive(N, 1.0f / fp, 0);
+            var sin = sin1 + sin2;
+            float[] sinSamples = sin.Samples;
+            //for (int i = 0; i < sinSamples.Length; ++i) sinSamples[i] += 0.2f;
+            pltSin.Add.Scatter(sinTime, sinSamples);
+            pltSin.SavePng(AppContext.BaseDirectory + "wykresSinus.png", 1500, 1000);
+
+            var dSinSamples = sinSamples.Select(s => (double)s).ToArray();
+            System.Numerics.Complex[] spectrum = FftSharp.FFT.Forward(dSinSamples);
+            var magnitudeSpectrum = FftSharp.FFT.Magnitude(spectrum);
+            double[] freqAxis = FftSharp.FFT.FrequencyScale(magnitudeSpectrum.Length, fp);
+            pltFourier.Add.Scatter(freqAxis, magnitudeSpectrum);
+            pltFourier.SavePng(AppContext.BaseDirectory + "wykresMagnitude.png", 1500, 1000);
+
+            SignalOperations.HighPassFilter(dSinSamples, fp, 700);
+
+            spectrum = FftSharp.FFT.Forward(dSinSamples);
+            magnitudeSpectrum = FftSharp.FFT.Magnitude(spectrum);
+            pltAfter.Add.Scatter(freqAxis, magnitudeSpectrum);
+            pltAfter.SavePng(AppContext.BaseDirectory + "wykresMagnitudePoFiltrze.png", 1500, 1000);
+
+            */

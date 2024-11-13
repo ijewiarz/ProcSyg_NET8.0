@@ -1,4 +1,6 @@
-﻿using NWaves.Operations.Tsm;
+﻿using NWaves.Effects;
+using NWaves.Operations.Tsm;
+using NWaves.Signals;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -10,15 +12,47 @@ namespace ProcSyg_NET8._0
     internal class SignalOperations
     {
 
-        public static void TimeStreaching() {
+        public static void Echo(DiscreteSignal signal, ref double[] samples, int ms, float feedback=0.5f) {
 
-            var pfipl = new PhaseLockingVocoder(0.75, 128, 1024);
+            float sec = ms / 1000f;
+            var echoEffect = new EchoEffect(signal.SamplingRate, sec, feedback);
+            var echoSignal = echoEffect.ApplyTo(signal);
 
-            
+            double[] samplesNew = echoSignal.Samples.Select(x => (double)x).ToArray();
 
+            samples = samplesNew;
         }
 
 
+        // take ms variable and make it true ms since constructor takes sec, feedback I assume 1 => same power as original
+        public static void Delay(DiscreteSignal signal, ref double[] samples, int ms, float feedback=0.5f) {
+
+            float sec = ms / 1000f;
+            var delayEffect = new DelayEffect(signal.SamplingRate, sec, feedback);
+            var delayedSignal = delayEffect.ApplyTo(signal);
+
+            double[] samplesNew = delayedSignal.Samples.Select(x => (double)x).ToArray();
+
+            samples = samplesNew;
+        }
+
+        // can do some ifs and what-nots for different signal lengths / stretch parameters 
+        public static void TimeStreaching(DiscreteSignal signal, ref double[] samples, int stretchingPar) {
+
+            // class for time-stretching
+            var pfipl = new PhaseLockingVocoder(stretchingPar, 128, 1024); // par stretch > 1 => elongated signal ( e.g. 2 gives twice as long), < 1 shortened signal
+
+            // apply to signal
+            var stretchedSingal = pfipl.ApplyTo(signal);
+
+            // get new samples of changed signal
+            double[] samplesNew = stretchedSingal.Samples.Select(x => (double)x).ToArray();
+
+            //Console.WriteLine($"samples L: {samples.Length} | samplesNew L: {samplesNew.Length}");
+
+            samples = samplesNew;
+            
+        }
 
 
         // sampleRate dawać taki jaki jest sygnału wczytanego do końcowego programu
