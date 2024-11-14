@@ -1,6 +1,8 @@
 ﻿using NWaves.Effects;
 using NWaves.Operations.Tsm;
 using NWaves.Signals;
+using ScottPlot.DataSources;
+using ScottPlot.Plottables;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -11,153 +13,189 @@ namespace ProcSyg_NET8._0
 {
     internal class SignalOperations
     {
-        public static void AddWhiteNoise(double[] samples, int freq, double noiseLevel = 0.03) {
+
+        // Method for adding white noise to the signals
+        public static void AddWhiteNoise(SignalHolder sh, double noiseLevel = 0.01) {
 
             // create white noise and get its samples
             DiscreteSignal noise = new NWaves.Signals.Builders.WhiteNoiseBuilder().SetParameter("min", -noiseLevel)
                                                                                   .SetParameter("max", noiseLevel)
-                                                                                  .SampledAt(freq)
-                                                                                  .OfLength(samples.Length)
+                                                                                  .SampledAt(sh.SamplingRate)
+                                                                                  .OfLength(sh.SamplesList[0].Length) // if stereo => both channels have the same length
                                                                                   .Build();
             double[] noiseSamples = noise.Samples.Select(x => (double)x).ToArray();
 
-            // apply to signal
-            for (int i = 0; i < samples.Length; ++i) {
-                samples[i] += noiseSamples[i];
+            // apply to the signals
+            for (int i = 0; i < sh.ChannelsCount; ++i) {
+                for (int j = 0; j < sh.SamplesList[i].Length; ++j) {
+                    sh.SamplesList[i][j] += noiseSamples[j];
+                }
+                // update signals list
+                DiscreteSignal newSignal = new DiscreteSignal(sh.SamplingRate, sh.SamplesList[i].Select(x => (float)x).ToArray());
+                sh.SignalsList[i] = newSignal;
             }
 
         }
 
-        public static void Echo(DiscreteSignal signal, ref double[] samples, int ms, float feedback=0.5f) {
+        // Method for adding echo effect to the signals | feedback = 1 -> same power as signal
+        public static void Echo(SignalHolder sh, int ms, float feedback=0.5f) {
 
+            // convert ms to s
             float sec = ms / 1000f;
-            var echoEffect = new EchoEffect(signal.SamplingRate, sec, feedback);
-            var echoSignal = echoEffect.ApplyTo(signal);
+            var echoEffect = new EchoEffect(sh.SamplingRate, sec, feedback);
 
-            double[] samplesNew = echoSignal.Samples.Select(x => (double)x).ToArray();
+            // apply to the signals and update lists
+            for (int i = 0; i < sh.ChannelsCount; ++i) {
 
-            samples = samplesNew;
+                var echoSignal = echoEffect.ApplyTo(sh.SignalsList[i]);
+                double[] samplesNew = echoSignal.Samples.Select(x => (double)x).ToArray();
+
+                sh.SignalsList[i] = echoSignal;
+                sh.SamplesList[i] = samplesNew;
+            }
+
         }
 
-        // take ms variable and make it true ms since constructor takes sec, feedback I assume 1 => same power as original
-        public static void Delay(DiscreteSignal signal, ref double[] samples, int ms, float feedback=0.5f) {
+        // Method for adding delay effect to the signals | feedback = 1 -> same power as signal
+        public static void Delay(SignalHolder sh, int ms, float feedback=0.5f) {
 
+            // convert ms to s
             float sec = ms / 1000f;
-            var delayEffect = new DelayEffect(signal.SamplingRate, sec, feedback);
-            var delayedSignal = delayEffect.ApplyTo(signal);
+            var delayEffect = new DelayEffect(sh.SamplingRate, sec, feedback);
 
-            double[] samplesNew = delayedSignal.Samples.Select(x => (double)x).ToArray();
+            // apply to the signals and update lists
+            for (int i = 0; i < sh.ChannelsCount; ++i) {
 
-            samples = samplesNew;
-        }
+                var delayedSignal = delayEffect.ApplyTo(sh.SignalsList[i]);
+                double[] samplesNew = delayedSignal.Samples.Select(x => (double)x).ToArray();
 
-        // can do some ifs and what-nots for different signal lengths / stretch parameters 
-        public static void TimeStreaching(DiscreteSignal signal, ref double[] samples, int stretchingPar) {
-
-            // class for time-stretching
-            var pfipl = new PhaseLockingVocoder(stretchingPar, 128, 1024); // par stretch > 1 => elongated signal ( e.g. 2 gives twice as long), < 1 shortened signal
-
-            // apply to signal
-            var stretchedSingal = pfipl.ApplyTo(signal);
-
-            // get new samples of changed signal
-            double[] samplesNew = stretchedSingal.Samples.Select(x => (double)x).ToArray();
-            samples = samplesNew;
+                sh.SignalsList[i] = delayedSignal;
+                sh.SamplesList[i] = samplesNew;
+            }
             
         }
 
-
-        // sampleRate dawać taki jaki jest sygnału wczytanego do końcowego programu
-        // praca w chunkach nie działa idk czemu jeszcze
-        public static void LowPassFilter(double[] samples, int sampleRate, int maxFreq) {
-
-            // zero-pad samples to fit power of 2, at least 2 samples
-            double[] samplesNew = FftSharp.Pad.ZeroPad(samples);
-            if (samplesNew.Length == 1) samplesNew = samplesNew.Append(0.0).ToArray();
-            samplesNew = FftSharp.Filter.LowPass(samplesNew, sampleRate, maxFreq);
-            // get rid of additional zeros from padding (if any)
-            TruncateZeros(samples, ref samplesNew);
-
-            Array.Copy(samplesNew, samples, samples.Length);
-
-        }
-
-        public static void HighPassFilter(double[] samples, int sampleRate, int minFreq) {
-
-            // zero-pad samples to fit power of 2, at least 2 samples
-            double[] samplesNew = FftSharp.Pad.ZeroPad(samples);
-            if (samplesNew.Length == 1) samplesNew = samplesNew.Append(0.0).ToArray();
-
-            samplesNew = FftSharp.Filter.HighPass(samplesNew, sampleRate, minFreq);
-            // get rid of additional zeros from padding (if any)
-            TruncateZeros(samples, ref samplesNew);
-
-            Array.Copy(samplesNew, samples, samples.Length);
-
-
-        }
-
-
-        /*
-         * IN: samples of signal, value of decibels
-         * 
-         * Method to change the level of signal power. It's IN PLACE computing
-         * using chunks of data for much faster results (e.g. for audio processing)
-         * 
-         * OUT: -
+        /* Method for time stretching/shrinking operations
+         * stretchingPar > 1 -> stretching, stretchigPar < 1 -> shrinking
+         * ideas: adding ifs etc. for different signals parameters for optimalisations and speed
          */
-        public static void ChangeDBLevel(double[] samples, int dB) {
+        public static void TimeStretching(SignalHolder sh, double stretchingPar) {
+
+            // one of the classes for time-stretching
+            var pfipl = new PhaseLockingVocoder(stretchingPar, 128, 1024); // 128 -> hop par, 1024 -> fft size
+
+            // apply to the signals and iptade lists
+            for (int i = 0; i < sh.ChannelsCount; ++i) {
+
+                var stretchedSingal = pfipl.ApplyTo(sh.SignalsList[i]);
+                double[] samplesNew = stretchedSingal.Samples.Select(x => (double)x).ToArray();
+
+                sh.SignalsList[i] = stretchedSingal;
+                sh.SamplesList[i] = samplesNew;
+            }
+            
+        }
+
+        // Method for low-pass filtering
+        public static void LowPassFilter(SignalHolder sh, int maxFreq) {
+
+            for (int i = 0; i < sh.ChannelsCount; ++i) {
+
+                // zero-pad samples to fit power of 2, at least 2 samples
+                double[] samplesNew = FftSharp.Pad.ZeroPad(sh.SamplesList[i]);
+                if (samplesNew.Length == 1) samplesNew = samplesNew.Append(0.0).ToArray();
+                
+                // get samples after filtering
+                samplesNew = FftSharp.Filter.LowPass(samplesNew, sh.SamplingRate, maxFreq);
+                // get rid of additional zeros from padding (if any)
+                TruncateZeros(sh.SamplesList[i], ref samplesNew);
+
+                // update lists
+                sh.SamplesList[i] = samplesNew;
+                DiscreteSignal newSignal = new DiscreteSignal(sh.SamplingRate, sh.SamplesList[i].Select(x => (float)x).ToArray());
+                sh.SignalsList[i] = newSignal;
+            }
+
+        }
+
+        // Method for high-pass filtering
+        public static void HighPassFilter(SignalHolder sh, int minFreq) {
+
+            for (int i = 0; i < sh.ChannelsCount; ++i) {
+
+                // zero-pad samples to fit power of 2, at least 2 samples
+                double[] samplesNew = FftSharp.Pad.ZeroPad(sh.SamplesList[i]);
+                if (samplesNew.Length == 1) samplesNew = samplesNew.Append(0.0).ToArray();
+
+                // get samples after filtering
+                samplesNew = FftSharp.Filter.HighPass(samplesNew, sh.SamplingRate, minFreq);
+                // get rid of additional zeros from padding (if any)
+                TruncateZeros(sh.SamplesList[i], ref samplesNew);
+
+                // update lists
+                sh.SamplesList[i] = samplesNew;
+                DiscreteSignal newSignal = new DiscreteSignal(sh.SamplingRate, sh.SamplesList[i].Select(x => (float)x).ToArray());
+                sh.SignalsList[i] = newSignal;
+            }
+
+        }
+
+        // Method for changing power level of signals (in dB)
+        public static void ChangeDBLevel(SignalHolder sh, int dB) {
 
             int fftSize = 2058; // has to be power of 2
             int index = 0;
 
-            // if data is smaller or equal than fft sample number
-            if (samples.Length <= fftSize) {
+            for (int i = 0; i < sh.ChannelsCount; ++i) {
 
-                double[] changedSamples = ChangeDBLevelChunk(samples, dB);
-                Array.Copy(changedSamples, samples, changedSamples.Length);
+                // if data is smaller or equal than fft sample number
+                if (sh.SamplesList[i].Length <= fftSize) {
 
-            } else {
+                    double[] changedSamples = ChangeDBLevelChunk(sh.SamplesList[i], dB);
+                    Array.Copy(changedSamples, sh.SamplesList[i], changedSamples.Length);
 
-                double[] dataChunk = new double[fftSize];
-                double[] changedChunk = new double[fftSize];
+                } else {
 
-                // if data is bigger than fft sample number
-                for (index = 0; index < samples.Length; index += fftSize) {
+                    double[] dataChunk = new double[fftSize];
+                    double[] changedChunk = new double[fftSize];
 
-                    // if not multiple of fft sample number
-                    if (index + fftSize > samples.Length) break;
+                    // if data is bigger than fft sample number
+                    for (index = 0; index < sh.SamplesList[i].Length; index += fftSize) {
 
-                    // change the block of data and applay to samples
-                    Array.Copy(samples, index, dataChunk, 0, fftSize);
-                    changedChunk = ChangeDBLevelChunk(dataChunk, dB);
-                    Array.Copy(changedChunk, 0, samples, index, fftSize);
+                        // if not multiple of fft sample number
+                        if (index + fftSize > sh.SamplesList[i].Length) break;
 
+                        // change the block of data and applay to samples
+                        Array.Copy(sh.SamplesList[i], index, dataChunk, 0, fftSize);
+                        changedChunk = ChangeDBLevelChunk(dataChunk, dB);
+                        Array.Copy(changedChunk, 0, sh.SamplesList[i], index, fftSize);
+
+                    }
+                    // how many samples left in input
+                    int numberLeft = sh.SamplesList[i].Length - index;
+
+                    // if any left
+                    if (numberLeft > 0) {
+
+                        // get rest of the samples
+                        dataChunk = new double[numberLeft];
+                        Array.Copy(sh.SamplesList[i], index, dataChunk, 0, numberLeft);
+
+                        // applay changes
+                        changedChunk = ChangeDBLevelChunk(dataChunk, dB);
+                        Array.Copy(changedChunk, 0, sh.SamplesList[i], index, numberLeft);
+                    }
                 }
-                // how many samples left in input
-                int numberLeft = samples.Length - index;
 
-                // if any left
-                if (numberLeft > 0) {
+                // update signals list
+                DiscreteSignal newSignal = new DiscreteSignal(sh.SamplingRate, sh.SamplesList[i].Select(x => (float)x).ToArray());
+                sh.SignalsList[i] = newSignal;
 
-                    // get rest of the samples
-                    dataChunk = new double[numberLeft];
-                    Array.Copy(samples, index, dataChunk, 0, numberLeft);
-
-                    // applay changes
-                    changedChunk = ChangeDBLevelChunk(dataChunk, dB);
-                    Array.Copy(changedChunk, 0, samples, index, numberLeft);
-                }
             }
+
         }
 
-        /*
-         * IN: samples of signal, value of decibels
-         * 
-         * Method to change the level of signal power
-         * 
-         * OUT: array with modified samples of signal
-         */
+        // Help method only used in ChangeDBLevel(...)
         private static double[] ChangeDBLevelChunk(double[] samples, int dB) {
 
             // zero-pad samples to fit power of 2, at least 2 samples

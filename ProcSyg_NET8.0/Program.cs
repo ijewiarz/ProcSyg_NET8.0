@@ -26,44 +26,21 @@ namespace ProcSyg
             var pltAfter = new ScottPlot.Plot();
             */
 
-            WaveFile waveFile; // .wav file contener
+            SignalHolder sH = new SignalHolder();
+            sH.LoadSignal("test.wav");
+            Console.WriteLine("Channels: " + sH.ChannelsCount.ToString());
 
-            // Load .wav file
-            using (var stream = new FileStream("test3s.wav", FileMode.Open)) {
-                waveFile = new WaveFile(stream);
-            }
-            // Extract header
-            WaveFormat Header = waveFile.WaveFmt;
+            SignalOperations.ChangeDBLevel(sH, 3);
+            SignalOperations.Delay(sH, 75);
+            SignalOperations.AddWhiteNoise(sH, 0.01);
+            SignalOperations.Echo(sH, 80);
+            SignalOperations.TimeStretching(sH, 1.5);
+            SignalOperations.LowPassFilter(sH, 500);
+            SignalOperations.HighPassFilter(sH, 250);
 
-            Console.WriteLine($"Channels: {Header.ChannelCount}");
+            sH.CleanSignal();
 
-            // Extract audio channel and its samples
-            DiscreteSignal chLeft = waveFile[Channels.Left];
-            double[] samplesLeft = chLeft.Samples.Select(s => (double)s).ToArray();
-
-            // Change signal
-            //int dB = -30;
-            SignalOperations.AddWhiteNoise(samplesLeft, chLeft.SamplingRate);
-            // cast to float for DiscreteSignal class
-            float[] fSamplesLeft = samplesLeft.Select(s => (float)s).ToArray();
-
-            // Constructing output .wav file
-            var outL = new DiscreteSignal(Header.SamplingRate, fSamplesLeft);
-            WaveFile output = new WaveFile(new[] { outL });
-
-            // Save .wav file
-            using (var stream = new FileStream("saved_test.wav", FileMode.Create)) {
-                output.SaveTo(stream);
-            }
-            
-
-            
-
-
-
-
-
-
+            sH.SaveSignal("saved_test.wav");
             // end of program
             Console.WriteLine("Koniec.");
 
